@@ -132,12 +132,13 @@ window.App = (function () {
     stage.className = 'scene door-stage enter';
     stage.id = 'door-stage';
 
-    // 拱门 SVG
+    // 拱门 SVG（等距透视 · 30° 斜线 · 三面明暗）
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 340 300');
     svg.setAttribute('class', 'scene-svg');
     const defs = `<defs>
-      <filter id="softBlur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="3"/></filter>
+      <filter id="softBlur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="1.5"/></filter>
+      <filter id="softBlur4" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="4"/></filter>
       <radialGradient id="warmGlow" cx="50%" cy="50%" r="50%">
         <stop offset="0%" stop-color="rgba(255,217,160,0.9)"/><stop offset="35%" stop-color="rgba(242,180,92,0.35)"/>
         <stop offset="70%" stop-color="rgba(242,180,92,0.1)"/><stop offset="100%" stop-color="rgba(242,180,92,0)"/>
@@ -147,37 +148,87 @@ window.App = (function () {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svg.appendChild(g);
 
-    // 墙
-    addRect(g, 0, 0, 340, 300, '#0E1220');
-    // 拱门
+    // —— 背景：远处黑墙（空气透视：远暗远糊远透明）——
+    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); n.setAttribute('x', '0'); n.setAttribute('y', '0'); n.setAttribute('width', '340'); n.setAttribute('height', '300'); n.setAttribute('fill', '#080A10'); return n; })());
+    // 地面：等距大菱形，从门口向观众展开
+    const floor = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    floor.setAttribute('points', '170,196 300,266 170,336 40,266');
+    floor.setAttribute('fill', '#141824');
+    floor.setAttribute('class', 'soft-edge');
+    floor.setAttribute('style', 'pointer-events:none;filter:url(#softBlur);opacity:0.92');
+    g.appendChild(floor);
+    // 地面亮面细分（菱形内部斜切，体现石板感）
+    const floorTop = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    floorTop.setAttribute('points', '170,196 236,232 170,266 104,232');
+    floorTop.setAttribute('fill', '#1A1E2A');
+    floorTop.setAttribute('style', 'pointer-events:none;filter:url(#softBlur);opacity:0.9');
+    g.appendChild(floorTop);
+    // 两侧斜墙（向画面外斜的平行四边形，形成凹空间；30° 斜线）
+    const wallL = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    wallL.setAttribute('points', '95,214 95,60 38,112 38,270');
+    wallL.setAttribute('fill', '#11151F');
+    wallL.setAttribute('class', 'soft-edge');
+    wallL.setAttribute('style', 'pointer-events:none;filter:url(#softBlur);opacity:0.85');
+    g.appendChild(wallL);
+    const wallR = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    wallR.setAttribute('points', '245,214 245,60 302,112 302,270');
+    wallR.setAttribute('fill', '#0E1220');
+    wallR.setAttribute('style', 'pointer-events:none;filter:url(#softBlur);opacity:0.85');
+    g.appendChild(wallR);
+    // —— 中景：正面墙（大平行四边形，顶边略窄，三面明暗）——
     const doorG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     doorG.setAttribute('class', 'door-grp');
-    addRect(doorG, 150, 90, 40, 120, '#1A1E2A', '#2A2E3A');
-    const arch = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    arch.setAttribute('d', 'M150 90 a20 20 0 0 1 40 0');
-    arch.setAttribute('fill', '#1A1E2A');
-    arch.setAttribute('stroke', '#2A2E3A');
-    doorG.appendChild(arch);
-    g.appendChild(doorG);
-    // 门缝暖雾
+    // 墙面（左面受光 70%）
+    const wallFace = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    wallFace.setAttribute('points', '102,62 238,62 245,214 95,214');
+    wallFace.setAttribute('fill', '#1A1E2A');
+    wallFace.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
+    doorG.appendChild(wallFace);
+    // 墙面右面（暗 45%）
+    const wallFaceR = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    wallFaceR.setAttribute('points', '238,62 254,68 254,216 245,214');
+    wallFaceR.setAttribute('fill', '#141926');
+    wallFaceR.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
+    doorG.appendChild(wallFaceR);
+    // 墙顶面（亮 100%）
+    const wallTop = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    wallTop.setAttribute('points', '88,56 102,62 238,62 252,56');
+    wallTop.setAttribute('fill', '#232A3A');
+    wallTop.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
+    doorG.appendChild(wallTop);
+    // 拱门（门洞：矩形 + 顶部半圆）
+    const archInner = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    archInner.setAttribute('d', 'M150 190 L150 96 A20 20 0 0 1 190 96 L190 190 Z');
+    archInner.setAttribute('fill', '#3A3020');
+    archInner.setAttribute('class', 'soft-edge');
+    archInner.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
+    doorG.appendChild(archInner);
+    // 门洞内暖光雾（blur 8px）
     const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
     glow.setAttribute('cx', '170'); glow.setAttribute('cy', '150');
-    glow.setAttribute('r', '46'); glow.setAttribute('fill', 'url(#warmGlow)');
+    glow.setAttribute('r', '48'); glow.setAttribute('fill', 'url(#warmGlow)');
     glow.setAttribute('class', 'door-glow');
+    glow.setAttribute('style', 'pointer-events:none;filter:blur(8px)');
     if (phase === 'memorial') glow.setAttribute('opacity', '0.85');
     else glow.setAttribute('opacity', phase === 'before' ? '0.12' : '0.4');
-    g.appendChild(glow);
-    // 门缝线
-    addRect(g, 170, 96, 1.4, 108, '#FFD9A0', null, 'blur-line');
-    // 地面光斑
-    const floor = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-    floor.setAttribute('cx', '170'); floor.setAttribute('cy', '252');
-    floor.setAttribute('rx', '70'); floor.setAttribute('ry', '16');
-    floor.setAttribute('fill', 'url(#warmGlow)');
-    floor.setAttribute('opacity', '0.25');
-    floor.setAttribute('class', 'floor-glow');
-    g.appendChild(floor);
-    // 浮尘
+    doorG.appendChild(glow);
+    // 门缝：2px 竖线 + blur 4px 暖光
+    const seamLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    seamLine.setAttribute('x1', '170'); seamLine.setAttribute('y1', '92'); seamLine.setAttribute('x2', '170'); seamLine.setAttribute('y2', '190');
+    seamLine.setAttribute('stroke', '#FFD9A0'); seamLine.setAttribute('stroke-width', '2');
+    seamLine.setAttribute('class', 'blur-line');
+    seamLine.setAttribute('style', 'pointer-events:none;filter:url(#softBlur4)');
+    doorG.appendChild(seamLine);
+    g.appendChild(doorG);
+    // 地面光斑：梯形从门缝投出
+    const floorPatch = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    floorPatch.setAttribute('points', '158,212 182,212 226,252 206,266 134,266 114,252');
+    floorPatch.setAttribute('fill', 'url(#warmGlow)');
+    floorPatch.setAttribute('opacity', '0.3');
+    floorPatch.setAttribute('class', 'floor-glow');
+    floorPatch.setAttribute('style', 'pointer-events:none;filter:url(#softBlur4)');
+    g.appendChild(floorPatch);
+    // 前景：浮尘
     for (let i = 0; i < 24; i++) {
       const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       c.setAttribute('cx', 20 + Math.random() * 300);
@@ -185,6 +236,7 @@ window.App = (function () {
       c.setAttribute('r', 1 + Math.random());
       c.setAttribute('fill', Math.random() > 0.5 ? '#FFD9A0' : '#A8B8D8');
       c.setAttribute('opacity', (0.1 + Math.random() * 0.2).toFixed(2));
+      c.setAttribute('style', 'pointer-events:none');
       g.appendChild(c);
     }
 
