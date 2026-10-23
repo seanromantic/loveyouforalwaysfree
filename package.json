@@ -1,0 +1,7 @@
+{
+  "name": "loveyouforalways",
+  "description": "14 天生日互动网页：每天走一小段路，最后收到一封信。",
+  "scripts": {
+    "dev": "npx serve ."
+  }
+}

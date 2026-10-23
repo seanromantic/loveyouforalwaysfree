@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080A10">
+  <title>14 天的路 · 生日快乐</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='4' y='6' width='16' height='12' rx='1' fill='none' stroke='%23F2B45C' stroke-width='1.4'/%3E%3Cpath d='M4 7l8 6 8-6' fill='none' stroke='%23F2B45C' stroke-width='1.4'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- 字体：思源宋体（自托管镜像） -->
+  <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap">
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- 运行配置：由部署时注入；无后端时自动降级本地进度（便于预览） -->
+  <script>
+    window.ENV_SUPABASE_URL = '';          // 部署时替换为 SUPABASE_URL
+    window.ENV_SUPABASE_ANON_KEY = '';     // 部署时替换为 SUPABASE_ANON_KEY
+    window.ENV_FREE_MODE = true;           // free 版置 true：去掉时间判定，触摸即下一个
+  </script>
+
+  <script src="data/days.js"></script>
+  <script src="data/scenes.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/scenes.js"></script>
+  <script src="js/engine.js"></script>
+</body>
+</html>
