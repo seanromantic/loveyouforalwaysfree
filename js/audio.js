@@ -177,6 +177,30 @@ window.AudioEngine = (function () {
     tone(55, { type: 'sine', dur: 1.6, vol: 0.1, release: 0.9, when: 0.1 });
   }
 
+  /* —— 纸张轻响（Day 2 纸条展开）—— */
+  function paper() {
+    if (!ctx || muted || !enabled) return;
+    // 两下极轻的"沙沙"，用高频白噪声包络近似
+    [0, 0.18].forEach((when) => {
+      const t = ctx.currentTime + when;
+      const dur = 0.09;
+      const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 4200;
+      bp.Q.value = 1.4;
+      const g = ctx.createGain();
+      g.gain.value = 0.05;
+      src.connect(bp).connect(g).connect(master);
+      src.start(t);
+    });
+    tone(523, { type: 'sine', dur: 0.12, vol: 0.03, release: 0.1, when: 0.05 });
+  }
+
   return {
     start,
     tone,
@@ -188,6 +212,7 @@ window.AudioEngine = (function () {
     fullMelody,
     firstMusicBox,
     doorOpen,
+    paper,
     setMuted,
     isMuted,
     ensureCtx

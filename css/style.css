@@ -465,6 +465,14 @@ body::after {
   50%      { transform: translateY(-7px); }
 }
 
+/* 风铃薄片轻晃（Day 7） */
+.chime-swing,
+[style*="chimeSwing"] { }
+@keyframes chimeSwing {
+  0%, 100% { transform: rotate(-2.2deg); }
+  50%      { transform: rotate(2.6deg); }
+}
+
 /* 浮尘慢速上飘 */
 .dust-bit {
   animation-name: dustFloat;
