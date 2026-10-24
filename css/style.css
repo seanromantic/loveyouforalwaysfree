@@ -303,6 +303,28 @@ body::after {
 }
 .complete-overlay.show .done-next { opacity: 0.8; transition-delay: 2.4s; }
 
+/* free 版：下一天按钮 */
+.complete-overlay .done-next-btn {
+  margin-top: 2.2vh;
+  padding: 10px 26px;
+  font-family: var(--font-serif, 'Noto Serif SC', serif);
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  color: #F2B45C;
+  background: rgba(8, 10, 16, 0.55);
+  border: 1px solid rgba(242, 180, 92, 0.35);
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.6s ease, transform 0.6s ease, background 0.3s ease;
+}
+.complete-overlay.show .done-next-btn { opacity: 1; transform: translateY(0); transition-delay: 2.6s; }
+.complete-overlay .done-next-btn:hover { background: rgba(242, 180, 92, 0.14); }
+.complete-overlay .done-next-btn:active { transform: translateY(2px); }
+.complete-overlay .done-next-btn + .done-next { margin-top: 1.6vh; }
+
 /* —— 信（Day 14）—— */
 .letter-sheet {
   position: absolute;

@@ -24,6 +24,7 @@ export const Room3D = (() => {
   const FLOOR    = 0x39415A;          // 地面基色
   const WARM     = 0xFFD9A0;          // 主暖光
   const COOL     = 0xA8B8D8;          // 冷月光
+  const MOON     = 0x9FB8E8;          // 窗月（Day5 空间显影开关）
   const CAM_POS  = new THREE.Vector3(20, 20, 20);
   const CAM_LOOK = new THREE.Vector3(0, 3.2, 0);   // 房间中心偏上 → 桌/灯在中下部
   const FRUSTUM  = 16;                // 初始视野高度（zoom=1）
@@ -37,6 +38,9 @@ export const Room3D = (() => {
   let doorGroup = null;               // 门口过渡组
   let dust = null;                    // 浮尘
   let lampLight = null;               // 桌上主点光源
+  let floorMat = null, glowMat = null, southMat = null, baseMat = null;
+  let ambientL = null, hemiL = null, keyL = null, moonL = null, beamMat = null;
+  let roomStage = 0;                  // 空间显影阶段 0-3（0=虚无孤灯 1=窗开墙现 2=房间丰满 3=全亮）
   let rafId = 0, running = false;
   let animFns = [];                   // 每帧回调（呼吸/光晕/机关动画）
   let pickMap = new Map();            // pickId -> handler
@@ -84,43 +88,59 @@ export const Room3D = (() => {
     updateOrtho();
   }
 
-  /* ---- 房间几何（厚板地面 / 三面墙 / 墙根阴影 / 桌子 / 灯） ---- */
+  /* ---- 房间几何（空间显影：Day1-4 只有黑暗中的桌灯，Day5 窗开墙现，Day14 全亮） ---- */
   function buildRoom() {
-    // 地面：厚板 + 石板缝纹理（程序生成，无图片文件）
+    // 地面：厚板 + 石板缝纹理，顶面以径向渐变 alphaMap 实现"亮区渐隐入黑暗"
     const floorTex = makeSlabTexture();
-    const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(12, 0.5, 12),
-      new THREE.MeshStandardMaterial({ color: FLOOR, roughness: 0.8, metalness: 0.2, map: floorTex })
-    );
+    const glowAlpha = makeGlowAlpha(512, 300, 170, 470);   // 亮心偏向桌下（纹理 y=300 ≈ 世界 z=-5）
+    floorMat = new THREE.MeshStandardMaterial({
+      color: FLOOR, roughness: 0.8, metalness: 0.2, map: floorTex,
+      alphaMap: glowAlpha, transparent: true, opacity: 0.001
+    });
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.5, 12), floorMat);
     floor.position.y = -0.25;
     floor.receiveShadow = true;
     persistent.add(floor);
 
-    // 南墙（有厚度）
-    const south = new THREE.Mesh(
-      new THREE.BoxGeometry(12, 8, 0.5),
-      new THREE.MeshStandardMaterial({ color: WALL, roughness: 0.92, metalness: 0.08 })
-    );
+    // 灯下亮区地板（Day1 就存在的一小片被照亮的圆形地板，边缘融进黑暗）
+    const smallGlow = makeGlowAlpha(512, 512, 120, 300);
+    glowMat = new THREE.MeshStandardMaterial({
+      color: FLOOR, roughness: 0.85, metalness: 0.15,
+      alphaMap: smallGlow, transparent: true, opacity: 0.9
+    });
+    const glowFloor = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), glowMat);
+    glowFloor.rotation.x = -Math.PI / 2;
+    glowFloor.position.set(0, 0.02, -4.7);
+    glowFloor.receiveShadow = true;
+    persistent.add(glowFloor);
+
+    // 南墙（有厚度；Day5 起显影，之前完全不可见 → 前四天没有墙）
+    southMat = new THREE.MeshStandardMaterial({
+      color: WALL, roughness: 0.92, metalness: 0.08,
+      transparent: true, opacity: 0.001
+    });
+    const south = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 0.5), southMat);
     south.position.set(0, 4, -6.25);
     south.receiveShadow = true;
     persistent.add(south);
 
-    // 侧墙（东/西，更暗）
-    const sideMat = new THREE.MeshStandardMaterial({ color: 0x161C2A, roughness: 0.95, metalness: 0.06 });
-    for (const sx of [6.25, -6.25]) {
-      const side = new THREE.Mesh(new THREE.BoxGeometry(0.5, 8, 12), sideMat);
-      side.position.set(sx, 4, 0);
-      side.receiveShadow = true;
-      persistent.add(side);
-    }
-
-    // 墙根阴影（南墙根，软化的暗带，非硬切线）
-    const baseShade = new THREE.Mesh(
-      new THREE.BoxGeometry(12, 0.05, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1, metalness: 0, transparent: true, opacity: 0.5 })
-    );
+    // 墙根阴影（南墙根，随墙显影；软暗带，非硬切线）
+    baseMat = new THREE.MeshStandardMaterial({
+      color: 0x000000, roughness: 1, metalness: 0, transparent: true, opacity: 0
+    });
+    const baseShade = new THREE.Mesh(new THREE.BoxGeometry(12, 0.05, 0.4), baseMat);
     baseShade.position.set(0, 0.025, -5.8);
     persistent.add(baseShade);
+
+    // 窗月光束（Day5 窗开后：冷蓝光柱打在墙前，Additive 半透明）
+    beamMat = new THREE.MeshBasicMaterial({
+      color: MOON, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const beam = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 3.0), beamMat);
+    beam.position.set(0.6, 4.1, -5.7);
+    beam.rotation.y = 0.18;
+    beam.rotation.x = 0.08;
+    persistent.add(beam);
 
     // 桌子：桌面 + 四腿
     const deskMat = new THREE.MeshStandardMaterial({ color: 0x2A3042, roughness: 0.7, metalness: 0.1 });
@@ -169,26 +189,51 @@ export const Room3D = (() => {
     lampLight.shadow.bias = -0.005;
     persistent.add(lampLight);
 
-    // 环境光（暗部不死黑）
-    const ambient = new THREE.AmbientLight(0x404050, 1.5);
-    persistent.add(ambient);
+    // 环境光（暗部不死黑；随显影渐强）
+    ambientL = new THREE.AmbientLight(0x404050, 0.7);
+    persistent.add(ambientL);
 
-    // 天光（半球，补房间整体层次——参考库做法，冷色天光 + 暖色地光）
-    const hemi = new THREE.HemisphereLight(0x93A4CE, 0x2A2436, 1.15);
-    persistent.add(hemi);
+    // 天光（半球，冷色天光 + 暖色地光；随显影渐强）
+    hemiL = new THREE.HemisphereLight(0x93A4CE, 0x2A2436, 0.3);
+    persistent.add(hemiL);
 
-    // 冷色补光（左上，勾勒轮廓；开启阴影让房间大范围有软影）
-    const key = new THREE.DirectionalLight(COOL, 1.6);
-    key.position.set(8, 14, 8);
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -8; key.shadow.camera.right = 8;
-    key.shadow.camera.top = 8; key.shadow.camera.bottom = -8;
-    key.shadow.bias = -0.004;
-    persistent.add(key);
+    // 冷色补光（左上，勾勒轮廓；随显影渐强；开启阴影让房间大范围有软影）
+    keyL = new THREE.DirectionalLight(COOL, 0.4);
+    keyL.position.set(8, 14, 8);
+    keyL.castShadow = true;
+    keyL.shadow.mapSize.set(1024, 1024);
+    keyL.shadow.camera.left = -8; keyL.shadow.camera.right = 8;
+    keyL.shadow.camera.top = 8; keyL.shadow.camera.bottom = -8;
+    keyL.shadow.bias = -0.004;
+    persistent.add(keyL);
+
+    // 窗月光（Day5 显影开关：冷蓝，从窗外方向打入，随阶段渐强）
+    moonL = new THREE.DirectionalLight(MOON, 0);
+    moonL.position.set(-4, 9, -3);
+    moonL.castShadow = true;
+    moonL.shadow.mapSize.set(1024, 1024);
+    moonL.shadow.bias = -0.004;
+    persistent.add(moonL);
 
     // 浮尘（暖色，缓慢上飘，20~30 个，仅灯附近可见）
     buildDust();
+  }
+
+  /* 程序生成径向渐隐 alpha 纹理（白=不透明 → 黑=透明；亮心偏置） */
+  function makeGlowAlpha(cx, cy, rInner, rOuter) {
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 1024;
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, 1024, 1024);
+    const grad = g.createRadialGradient(cx, cy, rInner, cx, cy, rOuter);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.55, 'rgba(255,255,255,0.55)');
+    grad.addColorStop(1, 'rgba(255,255,255,0.02)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 1024, 1024);
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    return tex;
   }
 
   /* 程序生成石板缝纹理（CanvasTexture，非图片文件） */
@@ -393,6 +438,37 @@ export const Room3D = (() => {
       return dayGroup;
     },
     clearDayGroup() { clearDayGroup(); },
+
+    /* 空间显影：stage 0=虚无孤灯 / 1=窗开墙现(Day5) / 2=房间丰满 / 3=全亮(Day14) */
+    setRoomStage(stage) {
+      if (roomStage === stage || !scene) return;
+      roomStage = stage;
+      const t = { wall: 0, floor: 0.001, glow: 0.9, base: 0, beam: 0,
+                  amb: 0.7, hemi: 0.3, key: 0.4, moon: 0,
+                  fogN: 3, fogF: 16 };
+      if (stage === 1) Object.assign(t, { wall: 0.6, floor: 0.5, base: 0.45, beam: 0.22, amb: 1.0, hemi: 0.7, key: 0.9, moon: 0.7, fogN: 9, fogF: 30 });
+      else if (stage === 2) Object.assign(t, { wall: 0.85, floor: 0.8, base: 0.55, beam: 0.28, amb: 1.25, hemi: 0.95, key: 1.3, moon: 0.95, fogN: 14, fogF: 44 });
+      else if (stage === 3) Object.assign(t, { wall: 1, floor: 1, base: 0.6, beam: 0.32, amb: 1.5, hemi: 1.15, key: 1.6, moon: 1.1, fogN: 20, fogF: 60 });
+      gsap.killTweensOf(floorMat); gsap.killTweensOf(southMat); gsap.killTweensOf(glowMat);
+      gsap.killTweensOf(baseMat); gsap.killTweensOf(beamMat);
+      gsap.killTweensOf(ambientL); gsap.killTweensOf(hemiL); gsap.killTweensOf(keyL); gsap.killTweensOf(moonL);
+      const dur = stage > roomStage ? 2.2 : 1.2;
+      if (floorMat) gsap.to(floorMat, { opacity: t.floor, duration: dur, ease: 'power2.out' });
+      if (southMat) gsap.to(southMat, { opacity: t.wall, duration: dur, ease: 'power2.out' });
+      if (glowMat) gsap.to(glowMat, { opacity: t.glow, duration: 1.5, ease: 'power2.out' });
+      if (baseMat) gsap.to(baseMat, { opacity: t.base, duration: dur, ease: 'power2.out' });
+      if (beamMat) gsap.to(beamMat, { opacity: t.beam, duration: dur, ease: 'power2.out' });
+      if (ambientL) gsap.to(ambientL, { intensity: t.amb, duration: dur, ease: 'power2.out' });
+      if (hemiL) gsap.to(hemiL, { intensity: t.hemi, duration: dur, ease: 'power2.out' });
+      if (keyL) gsap.to(keyL, { intensity: t.key, duration: dur, ease: 'power2.out' });
+      if (moonL) gsap.to(moonL, { intensity: t.moon, duration: dur, ease: 'power2.out' });
+      const fog = scene.fog;
+      if (fog) {
+        gsap.killTweensOf(fog);
+        gsap.to(fog, { near: t.fogN, far: t.fogF, duration: dur, ease: 'power2.out' });
+      }
+    },
+    getRoomStage() { return roomStage; },
 
     /* 注册可点物体：mesh.userData.pickId + handler */
     addPick(mesh, id, handler) {

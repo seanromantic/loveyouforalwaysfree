@@ -30,6 +30,11 @@ window.App = (function () {
   let completeQueue = [];    // 补看队列（纪念/补看模式）
   let localStorageKey = 'loveyouforalways_progress';
 
+  /* 空间显影阶段：Day1-4 虚无孤灯 / Day5 窗开墙现 / Day6-13 丰满 / Day14 全亮 */
+  function stageForDay(day) {
+    return day < 5 ? 0 : day === 5 ? 1 : day < 14 ? 2 : 3;
+  }
+
   /* ============ Supabase 客户端（free 模式则走本地） ============ */
   function supabaseRpc(fn, params) {
     return fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
@@ -141,6 +146,7 @@ window.App = (function () {
   /* ============ 渲染：门口（Three.js 3D 门洞，before / 纪念 / 未完成时也走门口） ============ */
   function renderDoor(phase, daysLeft) {
     clearApp();
+    Room3D.setRoomStage(phase === 'memorial' ? 3 : 0);   // 门前：黑暗中的门（纪念：全亮房间）
     Room3D.showDoor(phase);
     const stage = document.getElementById('stage3d');
 
@@ -200,6 +206,7 @@ window.App = (function () {
     }
     clearApp();
     Room3D.hideDoor();
+    Room3D.setRoomStage(stageForDay(day));   // 空间显影：随天数墙/光慢慢长出来
     sceneEl = document.getElementById('stage3d');
     window.__sceneEl = sceneEl;
     window.__sceneText = null;
@@ -231,23 +238,36 @@ window.App = (function () {
       <div class="done-line">${line}</div>
       <div class="done-sub">信封 +1 · 明天，还有一段路。</div>
       <div class="done-next">轻触继续</div>`;
+    // free 版：加"下一天"按钮，随时快进
+    if (FREE_MODE) {
+      const nb = document.createElement('button');
+      nb.className = 'done-next-btn';
+      nb.textContent = '下一天';
+      nb.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        finishDay(day);
+      });
+      ov.appendChild(nb);
+    }
     sceneEl.appendChild(ov);
     setTimeout(() => ov.classList.add('show'), 400);
 
     // 防重复
-    completeTimer = setTimeout(() => {
-      // 报告完成到后端（幂等）
-      completeDay(day).then(() => {
-        // 刷新状态
-        return getState();
-      }).then((s) => {
-        state = s;
-        updateChrome();
-        nextAfterComplete();
-      }).catch(() => {
-        netError.classList.add('show');
-      });
-    }, 4200);
+    completeTimer = setTimeout(() => finishDay(day), 4200);
+  }
+
+  function finishDay(day) {
+    if (completeTimer) { clearTimeout(completeTimer); completeTimer = null; }
+    completeDay(day).then(() => {
+      // 刷新状态
+      return getState();
+    }).then((s) => {
+      state = s;
+      updateChrome();
+      nextAfterComplete();
+    }).catch(() => {
+      netError.classList.add('show');
+    });
   }
 
   function nextAfterComplete() {
@@ -278,6 +298,8 @@ window.App = (function () {
   function renderDayDone() {
     clearApp();
     Room3D.hideDoor();
+    const dd = state && state.current_day ? state.current_day : 1;
+    Room3D.setRoomStage(stageForDay(dd));
     Room3D.beginDay();            // 房间暗着，只有桌和灯（弱光）
     Room3D.lampLight.intensity = 0.8;
     const cap = document.createElement('div');
@@ -299,6 +321,7 @@ window.App = (function () {
   /* ============ 纪念模式 ============ */
   function openMemorial() {
     clearApp();
+    Room3D.setRoomStage(3);   // 纪念：全亮房间
     const stage = document.createElement('div');
     stage.className = 'scene memorial-stage enter';
     const head = document.createElement('div');
@@ -328,6 +351,7 @@ window.App = (function () {
   /* ============ 信袋展开（Day 14 信） ============ */
   function openLetterSheet() {
     clearApp();
+    Room3D.setRoomStage(3);   // 最后一天：房间全亮
     const stage = document.createElement('div');
     stage.className = 'letter-sheet show';
     const inner = document.createElement('div');
