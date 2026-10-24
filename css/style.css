@@ -506,3 +506,168 @@ body::after {
     transition-duration: 0.2s !important;
   }
 }
+
+/* ============================================================
+ * Three.js 真 3D 层（Room3D 常驻舞台）
+ * ============================================================ */
+#stage3d {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  background: #080A10;
+  cursor: default;
+}
+#stage3d canvas { display: block; width: 100%; height: 100%; }
+
+/* 场景文字：毛玻璃暖色框（用户 CSS 硬规格：16px / 1.9 / 0.05em / #F2B45C） */
+#stage3d ~ .scene-text,
+.scene-text {
+  max-width: min(78vw, 420px);
+  text-align: left;
+  margin: 0;
+  padding: 14px 20px;
+  font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  font-size: 16px;
+  line-height: 1.9;
+  letter-spacing: 0.05em;
+  color: #F2B45C;
+  background: rgba(8, 10, 16, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(242, 180, 92, 0.16);
+  border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+}
+.scene-text p { margin: 0; }
+.scene-text p + p { margin-top: 6px; }
+.scene-text .sub {
+  display: block;
+  margin-top: 10px;
+  font-family: 'Noto Sans SC', 'PingFang SC', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: rgba(242, 180, 92, 0.62);
+}
+
+/* 门口文字（毛玻璃化） */
+.door-caption,
+.door-count,
+.door-hint {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 4;
+  max-width: min(86vw, 460px);
+  font-family: 'Noto Serif SC', 'Songti SC', serif;
+  font-size: 16px;
+  line-height: 1.9;
+  letter-spacing: 0.05em;
+  color: #F2B45C;
+  background: rgba(8, 10, 16, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(242, 180, 92, 0.14);
+  border-radius: 12px;
+  padding: 12px 22px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 1.4s var(--ease);
+}
+.door-caption { top: 7vh; }
+.door-count { top: calc(7vh + 130px); font-family: 'Noto Sans SC', sans-serif; font-size: 12px; letter-spacing: 0.3em; color: rgba(242, 180, 92, 0.7); }
+.door-hint { bottom: 9vh; font-family: 'Noto Sans SC', sans-serif; font-size: 13px; letter-spacing: 0.18em; color: rgba(242, 180, 92, 0.72); }
+.door-caption.show, .door-count.show { opacity: 1; }
+.door-hint.show { opacity: 0.75; }
+
+/* Day14 信行（逐句浮现 + 回看图标） */
+.letter-lines {
+  position: absolute;
+  inset: 0;
+  z-index: 28;
+  pointer-events: none;
+}
+.l-line {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 56vw;
+  padding: 10px 18px;
+  font-family: 'Noto Serif SC', 'Songti SC', serif;
+  font-size: 16px;
+  line-height: 1.9;
+  letter-spacing: 0.05em;
+  color: #F2B45C;
+  background: rgba(8, 10, 16, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(242, 180, 92, 0.16);
+  border-radius: 12px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.5s var(--ease), border-color 0.5s var(--ease);
+}
+.l-line:active { transform: scale(0.98); border-color: var(--halo); }
+.l-line .l-ic { width: 18px; height: 18px; flex: 0 0 auto; color: rgba(242, 180, 92, 0.75); }
+.l-line .l-ic svg { width: 18px; height: 18px; stroke: currentColor; fill: none; }
+.l-line .l-tx { white-space: nowrap; }
+
+.letter-hint {
+  position: absolute;
+  bottom: 9vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 28;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  color: rgba(242, 180, 92, 0.7);
+  background: rgba(8, 10, 16, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(242, 180, 92, 0.14);
+  border-radius: 999px;
+  padding: 8px 20px;
+}
+
+/* Day12 方向键 */
+.fig-btns {
+  position: absolute;
+  bottom: 8vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  gap: 10px;
+  background: rgba(8, 10, 16, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(242, 180, 92, 0.16);
+  border-radius: 14px;
+  padding: 10px 14px;
+}
+.fig-btns button {
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 12px;
+  background: rgba(26, 30, 42, 0.75);
+  border: 1px solid rgba(168, 184, 216, 0.22);
+  color: #F2B45C;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  transition: border-color 0.4s var(--ease), transform 0.4s var(--ease);
+}
+.fig-btns button:active { border-color: var(--halo); transform: scale(0.94); }
+
+/* 完成浮层在 3D 舞台上居中（覆盖旧 .scene 内样式） */
+#stage3d > .complete-overlay {
+  inset: 0;
+}

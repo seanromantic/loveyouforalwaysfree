@@ -1,7 +1,20 @@
 /* ============================================================
  * js/engine.js · 前端主引擎
  * 状态机（before / active / memorial）· 场景调度 · Supabase 集成
+ * 渲染层：Three.js 真 3D（Room3D 常驻 #stage3d）
  * ============================================================ */
+import { Room3D } from './room3d.js';
+
+// 常驻 3D 舞台（clearApp 不清除；所有画面都在同一个房间里）
+(function ensureStage() {
+  const app = document.getElementById('app');
+  if (!app) return;
+  const stage = document.createElement('div');
+  stage.id = 'stage3d';
+  app.appendChild(stage);
+  Room3D.boot(stage);
+})();
+
 window.App = (function () {
   const SUPABASE_URL = window.ENV_SUPABASE_URL || '';
   const SUPABASE_ANON_KEY = window.ENV_SUPABASE_ANON_KEY || '';
@@ -125,145 +138,13 @@ window.App = (function () {
     setTimeout(() => { tip.style.opacity = '0'; setTimeout(() => tip.remove(), 1200); }, 1800);
   }
 
-  /* ============ 渲染：门口（before / 纪念 / 未完成时也走门口） ============ */
+  /* ============ 渲染：门口（Three.js 3D 门洞，before / 纪念 / 未完成时也走门口） ============ */
   function renderDoor(phase, daysLeft) {
     clearApp();
-    const stage = document.createElement('div');
-    stage.className = 'scene door-stage enter';
-    stage.id = 'door-stage';
+    Room3D.showDoor(phase);
+    const stage = document.getElementById('stage3d');
 
-    // 拱门 SVG（等距透视 · 30° 斜线 · 三面明暗）
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 340 300');
-    svg.setAttribute('class', 'scene-svg');
-    const defs = `<defs>
-      <filter id="softBlur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="1.5"/></filter>
-      <filter id="softBlur4" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="4"/></filter>
-      <radialGradient id="warmGlow" cx="50%" cy="50%" r="50%">
-        <stop offset="0%" stop-color="rgba(255,217,160,0.9)"/><stop offset="35%" stop-color="rgba(242,180,92,0.35)"/>
-        <stop offset="70%" stop-color="rgba(242,180,92,0.1)"/><stop offset="100%" stop-color="rgba(242,180,92,0)"/>
-      </radialGradient>
-      <radialGradient id="vignette" cx="50%" cy="55%" r="68%">
-        <stop offset="0%" stop-color="rgba(8,10,16,0)"/><stop offset="62%" stop-color="rgba(8,10,16,0.22)"/>
-        <stop offset="100%" stop-color="rgba(8,10,16,0.55)"/>
-      </radialGradient>
-      <linearGradient id="roomFog" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="rgba(8,10,16,0.4)"/><stop offset="45%" stop-color="rgba(8,10,16,0)"/>
-        <stop offset="100%" stop-color="rgba(8,10,16,0)"/>
-      </linearGradient>
-    </defs>`;
-    svg.innerHTML = defs;
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    svg.appendChild(g);
-
-    // —— 底色：最深 + 极暗冷环境光（与 14 天房间同一视觉语言）——
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); n.setAttribute('x', '0'); n.setAttribute('y', '0'); n.setAttribute('width', '340'); n.setAttribute('height', '300'); n.setAttribute('fill', '#0B0D16'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); n.setAttribute('x', '0'); n.setAttribute('y', '0'); n.setAttribute('width', '340'); n.setAttribute('height', '300'); n.setAttribute('fill', 'rgba(168,184,216,0.045)'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    // 地面：等距大菱形（厚板三层：石板感 + 灯下亮、远处淡）
-    const floor = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    floor.setAttribute('points', '170,196 300,266 170,336 40,266');
-    floor.setAttribute('fill', '#151A26');
-    floor.setAttribute('class', 'soft-edge');
-    floor.setAttribute('style', 'pointer-events:none;filter:url(#softBlur);opacity:0.92');
-    g.appendChild(floor);
-    // 内层石板
-    const floorMid = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    floorMid.setAttribute('points', '170,196 244,233 170,270 96,233');
-    floorMid.setAttribute('fill', '#181E2C');
-    floorMid.setAttribute('style', 'pointer-events:none;filter:url(#softBlur);opacity:0.9');
-    g.appendChild(floorMid);
-    // 中心石板（门缝光下的亮区）
-    const floorTop = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    floorTop.setAttribute('points', '170,196 218,222 170,248 122,222');
-    floorTop.setAttribute('fill', '#1C2431');
-    floorTop.setAttribute('style', 'pointer-events:none;filter:url(#softBlur);opacity:0.9');
-    g.appendChild(floorTop);
-    // 石板暗缝（沿等距方向）
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon'); n.setAttribute('points', '170,196 200,211 197,213 168,199'); n.setAttribute('fill', 'rgba(8,10,16,0.55)'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon'); n.setAttribute('points', '170,336 140,321 143,319 172,334'); n.setAttribute('fill', 'rgba(8,10,16,0.55)'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    // 地面厚度边（近端深色带，让地面是"板"）
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon'); n.setAttribute('points', '170,336 300,266 303,271 173,342'); n.setAttribute('fill', '#0D111E'); n.setAttribute('class', 'soft-edge'); n.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)'); return n; })());
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon'); n.setAttribute('points', '170,336 40,266 37,271 167,342'); n.setAttribute('fill', '#0A0D18'); n.setAttribute('class', 'soft-edge'); n.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)'); return n; })());
-    // —— 南墙：正对镜头的大矩形（顶面厚度边 + 墙根阴影），与 14 天房间一致 ——
-    const wallL = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    wallL.setAttribute('points', '42,60 298,60 298,196 42,196');
-    wallL.setAttribute('fill', '#1A1E2A');
-    wallL.setAttribute('class', 'soft-edge');
-    wallL.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
-    g.appendChild(wallL);
-    // 南墙顶面厚度边（补光，最亮）
-    const wallTop = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    wallTop.setAttribute('points', '42,60 298,60 310,52 52,52');
-    wallTop.setAttribute('fill', '#2A3146');
-    wallTop.setAttribute('class', 'soft-edge');
-    wallTop.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
-    g.appendChild(wallTop);
-    // 墙根阴影
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon'); n.setAttribute('points', '42,196 298,196 298,201 42,201'); n.setAttribute('fill', 'rgba(0,0,0,0.45)'); n.setAttribute('style', 'pointer-events:none;filter:url(#softBlur4)'); return n; })());
-    // —— 东墙（右侧暗墙 + 交线一侧亮一侧暗）——
-    const wallR = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    wallR.setAttribute('points', '298,60 344,78 344,214 298,196');
-    wallR.setAttribute('fill', '#0E1320');
-    wallR.setAttribute('class', 'soft-edge');
-    wallR.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
-    g.appendChild(wallR);
-    // 交线亮侧
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon'); n.setAttribute('points', '298,60 298,196 300,196 300,60'); n.setAttribute('fill', 'rgba(168,184,216,0.15)'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    // 交线暗侧
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'polygon'); n.setAttribute('points', '296,60 298,60 298,196 296,196'); n.setAttribute('fill', 'rgba(0,0,0,0.5)'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    // —— 中景：拱门（开在南墙上：矩形 + 顶部半圆）——
-    const doorG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    doorG.setAttribute('class', 'door-grp');
-    // 拱门门洞（墙内凹洞：暗色底面）
-    const archInner = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    archInner.setAttribute('d', 'M150 190 L150 96 A20 20 0 0 1 190 96 L190 190 Z');
-    archInner.setAttribute('fill', '#3A3020');
-    archInner.setAttribute('class', 'soft-edge');
-    archInner.setAttribute('style', 'pointer-events:none;filter:url(#softBlur)');
-    doorG.appendChild(archInner);
-    // 门洞内暖光雾（blur 8px）
-    const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    glow.setAttribute('cx', '170'); glow.setAttribute('cy', '150');
-    glow.setAttribute('r', '48'); glow.setAttribute('fill', 'url(#warmGlow)');
-    glow.setAttribute('class', 'door-glow');
-    glow.setAttribute('style', 'pointer-events:none;filter:url(#softBlur4)');
-    if (phase === 'memorial') glow.setAttribute('opacity', '0.85');
-    else glow.setAttribute('opacity', phase === 'before' ? '0.12' : '0.4');
-    doorG.appendChild(glow);
-    // 门缝：2px 竖线 + blur 4px 暖光
-    const seamLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    seamLine.setAttribute('x1', '170'); seamLine.setAttribute('y1', '92'); seamLine.setAttribute('x2', '170'); seamLine.setAttribute('y2', '190');
-    seamLine.setAttribute('stroke', '#FFD9A0'); seamLine.setAttribute('stroke-width', '2');
-    seamLine.setAttribute('class', 'blur-line');
-    seamLine.setAttribute('style', 'pointer-events:none;filter:url(#softBlur4)');
-    doorG.appendChild(seamLine);
-    g.appendChild(doorG);
-    // 地面光斑：梯形从门缝投出
-    const floorPatch = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    floorPatch.setAttribute('points', '158,212 182,212 226,252 206,266 134,266 114,252');
-    floorPatch.setAttribute('fill', 'url(#warmGlow)');
-    floorPatch.setAttribute('opacity', '0.3');
-    floorPatch.setAttribute('class', 'floor-glow');
-    floorPatch.setAttribute('style', 'pointer-events:none;filter:url(#softBlur4)');
-    g.appendChild(floorPatch);
-    // 雾 + 暗角（与 14 天房间同一视觉语言）
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); n.setAttribute('x', '0'); n.setAttribute('y', '0'); n.setAttribute('width', '340'); n.setAttribute('height', '300'); n.setAttribute('fill', 'url(#roomFog)'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    g.appendChild((() => { const n = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); n.setAttribute('x', '0'); n.setAttribute('y', '0'); n.setAttribute('width', '340'); n.setAttribute('height', '300'); n.setAttribute('fill', 'url(#vignette)'); n.setAttribute('style', 'pointer-events:none'); return n; })());
-    // 前景：浮尘（只在门缝光附近，暖色，≤30）
-    for (let i = 0; i < 22; i++) {
-      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      c.setAttribute('cx', 150 + Math.random() * 40);
-      c.setAttribute('cy', 60 + Math.random() * 150);
-      c.setAttribute('r', 1 + Math.random() * 1.1);
-      c.setAttribute('fill', '#FFD9A0');
-      c.setAttribute('opacity', (0.1 + Math.random() * 0.2).toFixed(2));
-      c.setAttribute('style', 'pointer-events:none');
-      g.appendChild(c);
-    }
-
-    stage.appendChild(svg);
-
-    // 文字
+    // 文字（毛玻璃，见 css）
     const cap = document.createElement('div');
     cap.className = 'door-caption';
     if (phase === 'before') {
@@ -273,40 +154,30 @@ window.App = (function () {
     } else {
       cap.innerHTML = '这扇门后面，是我用 14 天搭的地方。<br>每天开一点，别一次走完。';
     }
-    stage.appendChild(cap);
+    app.appendChild(cap);
+    setTimeout(() => cap.classList.add('show'), phase === 'before' ? 600 : 900);
 
     // 倒计时/提示
     if (phase === 'before') {
       const cnt = document.createElement('div');
       cnt.className = 'door-count';
       cnt.textContent = `${daysLeft} 天 · 门才开`;
-      stage.appendChild(cnt);
+      app.appendChild(cnt);
+      setTimeout(() => cnt.classList.add('show'), 1400);
     } else {
       const hint = document.createElement('div');
       hint.className = 'door-hint';
       hint.textContent = phase === 'memorial' ? '轻触推门 · 全亮房间' : '轻触推门';
-      stage.appendChild(hint);
+      app.appendChild(hint);
       setTimeout(() => hint.classList.add('show'), 2500);
-      // 推门交互
-      stage.addEventListener('pointerdown', () => {
-        if (phase === 'memorial') {
-          openMemorial();
-        } else {
-          openFirstPending();
-        }
-      });
+      const push = () => {
+        stage.removeEventListener('pointerdown', push);
+        if (phase === 'memorial') openMemorial();
+        else openFirstPending();
+      };
+      stage.addEventListener('pointerdown', push);
     }
 
-    app.appendChild(stage);
-    setTimeout(() => cap.classList.add('show'), phase === 'before' ? 600 : 900);
-    if (phase === 'before') {
-      const cnt = stage.querySelector('.door-count');
-      setTimeout(() => cnt.classList.add('show'), 1400);
-    }
-    // 呼吸
-    glow.classList.add('breathe');
-
-    // 显示常驻控件
     showChrome();
   }
 
@@ -328,10 +199,8 @@ window.App = (function () {
       return; // 状态机保证不会走到这里
     }
     clearApp();
-    sceneEl = document.createElement('div');
-    sceneEl.className = 'scene';
-    sceneEl.id = 'scene-wrap';
-    app.appendChild(sceneEl);
+    Room3D.hideDoor();
+    sceneEl = document.getElementById('stage3d');
     window.__sceneEl = sceneEl;
     window.__sceneText = null;
     window.__sceneHint = null;
@@ -339,9 +208,6 @@ window.App = (function () {
     // 进度数字
     counter.classList.add('show');
     counter.textContent = `DAY ${String(day).padStart(2, '0')} / 14`;
-
-    // 进场淡入
-    setTimeout(() => sceneEl.classList.add('enter'), 60);
 
     // 调起场景
     const runner = window.Scenes[day];
@@ -411,20 +277,9 @@ window.App = (function () {
 
   function renderDayDone() {
     clearApp();
-    const stage = document.createElement('div');
-    stage.className = 'scene door-stage enter';
-    stage.id = 'door-stage';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 340 300');
-    svg.setAttribute('class', 'scene-svg');
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    svg.appendChild(g);
-    addRect(g, 0, 0, 340, 300, '#0E1220');
-    const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    glow.setAttribute('cx', '170'); glow.setAttribute('cy', '150'); glow.setAttribute('r', '40');
-    glow.setAttribute('fill', 'url(#warmGlow)'); glow.setAttribute('opacity', '0.5');
-    g.appendChild(glow);
-    stage.appendChild(svg);
+    Room3D.hideDoor();
+    Room3D.beginDay();            // 房间暗着，只有桌和灯（弱光）
+    Room3D.lampLight.intensity = 0.8;
     const cap = document.createElement('div');
     cap.className = 'door-caption';
     const next = state && state.next_unlock_at ? new Date(state.next_unlock_at) : null;
@@ -436,8 +291,7 @@ window.App = (function () {
       waitText = `今天的路走完了。<br>下一段路，${h ? h + ' 小时 ' : ''}${m} 分钟后开。`;
     }
     cap.innerHTML = waitText;
-    stage.appendChild(cap);
-    app.appendChild(stage);
+    app.appendChild(cap);
     setTimeout(() => cap.classList.add('show'), 800);
     showChrome();
   }
@@ -573,7 +427,7 @@ window.App = (function () {
           state = s;
           updateChrome();
           // 若当前在"今日走完"页且新一天解锁 → 进入新一天
-          if (!document.querySelector('.scene .scene-svg') || document.querySelector('.complete-overlay')) {
+          if (!document.querySelector('.door-caption') || document.querySelector('.complete-overlay')) {
             load();
           }
         }
@@ -585,23 +439,29 @@ window.App = (function () {
     if (completeTimer) { clearTimeout(completeTimer); completeTimer = null; }
     if (currentScene) { /* 场景 promise 不可取消，但容器会被清掉 */ }
     if (app) {
-      app.querySelectorAll('.scene, .letter-sheet, .net-error').forEach(n => {
+      // 3D 舞台之外的场景层
+      app.querySelectorAll('.scene, .letter-sheet, .net-error, .letter-lines, .letter-hint, .fig-btns, .scene-text, .scene-hint').forEach(n => {
         if (n.id !== 'net-error') {
           n.style.transition = 'opacity 0.5s ease';
           n.style.opacity = '0';
           setTimeout(() => n.remove(), 500);
         }
       });
-      // 清理残留
-      const keep = ['letter-bag', 'audio-toggle', 'day-counter', 'net-error'];
+      // 清理残留（保留常驻控件与 3D 舞台）
+      const keep = ['letter-bag', 'audio-toggle', 'day-counter', 'net-error', 'stage3d'];
       app.childNodes.forEach(n => {
-        if (n.nodeType === 1 && !keep.includes(n.id) && !n.classList.contains('letter-bag') && !n.classList.contains('audio-toggle') && !n.classList.contains('day-counter') && !n.classList.contains('net-error')) {
+        if (n.nodeType === 1 && !keep.includes(n.id) && !n.classList.contains('letter-bag') && !n.classList.contains('audio-toggle') && !n.classList.contains('day-counter') && !n.classList.contains('net-error') && n.id !== 'stage3d') {
           setTimeout(() => { if (n.parentNode) n.remove(); }, 600);
         }
       });
       window.__sceneEl = null;
       window.__sceneText = null;
       window.__sceneHint = null;
+    }
+    // 3D 舞台内的完成浮层等场景 DOM 也一并清除（挂在 stage3d 下，不在 app 子树）
+    const st = document.getElementById('stage3d');
+    if (st) {
+      st.querySelectorAll('.complete-overlay').forEach(n => n.remove());
     }
   }
 

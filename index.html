@@ -9,6 +9,16 @@
   <link rel="stylesheet" href="css/style.css">
   <!-- 字体：思源宋体（自托管镜像） -->
   <link rel="stylesheet" href="https://miaoda.feishu.cn/fonts/css2?family=Noto+Serif+SC:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500&display=swap">
+  <!-- Three.js 官方生态：本地 vendor + importmap（无运行时 CDN 依赖） -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.js",
+      "three/addons/": "./vendor/three/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="vendor/gsap.min.js"></script>
 </head>
 <body>
   <div id="app"></div>
@@ -17,13 +27,15 @@
   <script>
     window.ENV_SUPABASE_URL = '';          // 部署时替换为 SUPABASE_URL
     window.ENV_SUPABASE_ANON_KEY = '';     // 部署时替换为 SUPABASE_ANON_KEY
-    window.ENV_FREE_MODE = true;           // free 版置 true：去掉时间判定，触摸即下一个
+    window.ENV_FREE_MODE = false;          // free 版置 true：去掉时间判定，触摸即下一个
   </script>
 
   <script src="data/days.js"></script>
   <script src="data/scenes.js"></script>
   <script src="js/audio.js"></script>
-  <script src="js/scenes.js"></script>
-  <script src="js/engine.js"></script>
+  <!-- 3D 渲染层（ES module，按序：核心 → 场景 → 引擎） -->
+  <script type="module" src="js/room3d.js"></script>
+  <script type="module" src="js/scenes.js"></script>
+  <script type="module" src="js/engine.js"></script>
 </body>
 </html>
