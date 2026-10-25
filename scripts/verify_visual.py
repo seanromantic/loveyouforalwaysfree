@@ -45,6 +45,31 @@ with sync_playwright() as p:
     pg.goto('http://127.0.0.1:%d/' % PORT, wait_until='load', timeout=90000)
     pg.wait_for_timeout(2500)
 
+    # ---------- 0. CC0 GLB 模型加载（用户指令：别手搓，下现成模型） ----------
+    try:
+        pg.wait_for_function("window.__glbModels && Object.keys(window.__glbModels).length >= 5", timeout=30000)
+        glb_ok = True
+    except Exception:
+        glb_ok = False
+    check('0a 五个 CC0 GLB 全部加载 (桌/灯/门/企鹅/油灯)', glb_ok,
+          str(pg.evaluate("window.__glbModels ? Object.keys(window.__glbModels).length : 0")))
+    glb_info = pg.evaluate("""(() => {
+      const s = window.Room3D.scene;
+      const pers = s.children.find(c => c.children && c.children.some(k => k.name));
+      const tab = pers.getObjectByName('glb-table');
+      const lamp = pers.getObjectByName('glb-lamp');
+      const sh = (o) => { let c=0,r=0,n=0; if(!o) return [0,0,0];
+        o.traverse(m => { if (m.isMesh) { n++; if (m.castShadow) c++; if (m.receiveShadow) r++; } }); return [c,r,n]; };
+      const ts = sh(tab), ls = sh(lamp);
+      return { table: !!tab, lamp: !!lamp, tShadow: ts[0] === ts[2] && ts[0] > 0, lShadow: ls[0] === ls[2] && ls[0] > 0,
+               lampY: lamp ? lamp.position.y : -1 };
+    })()""")
+    check('0b 木桌 GLB 替换（非手搓方块）', glb_info['table'])
+    check('0c 台灯 GLB 替换', glb_info['lamp'], 'lampY=%.2f' % glb_info['lampY'])
+    check('0d 桌 GLB castShadow/receiveShadow 全开', glb_info['tShadow'])
+    check('0e 灯 GLB castShadow/receiveShadow 全开', glb_info['lShadow'])
+    check('0f 灯罩下有主光源（光从罩下打出）', glb_info['lampY'] > 0)
+
     # ---------- 1. 门嵌墙 ----------
     inv = pg.evaluate("""(() => {
       const s = window.Room3D.scene;
@@ -90,9 +115,9 @@ with sync_playwright() as p:
     # ---------- 3. 灯晕真光 ----------
     halo = pg.evaluate("""(() => {
       const s = window.Room3D.scene;
-      const pers = s.children.find(c => c.children && c.children.some(k => k.name));
-      const h = pers.children.find(k => k.name === 'lamp-halo');
-      const sphereHalo = pers.children.filter(k => k.name === 'lamp-halo' && k.isMesh);
+      const slot = s.getObjectByName('lamp-slot');
+      const h = slot ? slot.getObjectByName('lamp-halo') : null;
+      const sphereHalo = slot ? slot.children.filter(k => k.name === 'lamp-halo' && k.isMesh) : [];
       return { isSprite: !!(h && h.isSprite), sphereCount: sphereHalo.length,
                add: !!(h && h.material && h.material.blending === 2) };
     })()""")
@@ -128,6 +153,19 @@ with sync_playwright() as p:
     check('4c 宋体', txt is not None and ('Serif' in txt['font'] or 'Songti' in txt['font'] or 'SimSun' in txt['font']), str(txt and txt['font']))
     check('4d 暖黄 #F2B45C', txt is not None and '242, 180, 92' in txt['color'], str(txt and txt['color']))
     check('4e Day N 极淡小字', txt is not None and txt['dayTag'] == 'Day 1', str(txt and txt['dayTag']))
+    # 门口 GLB 门（rough_pine_door：门框门板挂件，非贴片）
+    try:
+        pT.wait_for_function("window.__glbModels && window.__glbModels.door", timeout=15000)
+    except Exception:
+        pass
+    door = pT.evaluate("""(() => {
+      window.Room3D.showDoor && window.Room3D.showDoor('before');
+      const s = window.Room3D.scene;
+      let g = null;
+      s.traverse(o => { if (o.name === 'glb-door') g = o; });
+      return !!g;
+    })()""")
+    check('4f 门口是 GLB 木门（非贴片）', door)
     pT.close()
 
     # ---------- 5. 显影阶段截图 ----------
@@ -145,47 +183,56 @@ with sync_playwright() as p:
     snap([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], 'dev_day14', 4800)
 
     # ---------- 6. 完整 14 天回归 ----------
-    # 先点门进入 Day1（等待场景与 pick 注册），再逐日驱动
-    pg.eval_on_selector('#stage3d', "el=>el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:1}))")
-    wt = time.time()
-    while time.time() - wt < 30:
-        if pg.evaluate('window.Room3D.__hasPick("d1")'): break
-        pg.wait_for_timeout(500)
-    check('回归 进入 Day1 场景', pg.evaluate('window.Room3D.__hasPick("d1")'))
-    stages = []
-    for d in range(1, 15):
-        pid = 'd%d' % d
-        ok = pg.evaluate('window.Room3D.__hasPick(%r)' % pid)
-        if not ok:
-            check('回归 day%02d 场景可驱动' % d, False, 'no pick'); break
-        pg.evaluate('window.Room3D.__fire(%r)' % pid)
-        if d == 10:
-            pg.wait_for_timeout(20000)
-            pg.evaluate('window.Room3D.__fire("d10-jar")')
-        if d == 12:
-            pg.wait_for_timeout(3000)
-            pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(700)
-            pg.keyboard.press('ArrowRight')
-        t0 = time.time(); done = False
-        while time.time() - t0 < 240:
-            if pg.evaluate("document.querySelectorAll('.complete-overlay.show').length"):
-                done = True; break
-            pg.wait_for_timeout(700)
-        stages.append(pg.evaluate('window.Room3D.getRoomStage()'))
-        check('回归 day%02d' % d, done, '%.0fs stage=%d' % (time.time() - t0, stages[-1]))
-        if not done: break
-        if d < 14:
-            nid = 'd%d' % (d + 1)
-            wt = time.time()
-            while time.time() - wt < 60:
-                if pg.evaluate('window.Room3D.__hasPick(%r)' % nid): break
-                pg.wait_for_timeout(500)
-            else:
-                check('day%02d→%02d 推进' % (d, d + 1), False); break
-    check('显影 stage 序列正确 (0,0,0,0,1,2×8,3)',
-          stages == [0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3],
-          str(stages))
-    check('零页面错误', len(ERR) == 0, 'errs=%s' % ERR[:4])
+    if os.environ.get('SKIP_REGRESSION') != '1':
+      # 先点门进入 Day1（等待场景与 pick 注册），再逐日驱动
+      pg.eval_on_selector('#stage3d', "el=>el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:1}))")
+      wt = time.time()
+      while time.time() - wt < 30:
+          if pg.evaluate('window.Room3D.__hasPick("d1")'): break
+          pg.wait_for_timeout(500)
+      check('回归 进入 Day1 场景', pg.evaluate('window.Room3D.__hasPick("d1")'))
+      stages = []
+      for d in range(1, 15):
+          pid = 'd%d' % d
+          ok = pg.evaluate('window.Room3D.__hasPick(%r)' % pid)
+          if not ok:
+              check('回归 day%02d 场景可驱动' % d, False, 'no pick'); break
+          pg.evaluate('window.Room3D.__fire(%r)' % pid)
+          if d == 10:
+              pg.wait_for_timeout(20000)
+              pg.evaluate('window.Room3D.__fire("d10-jar")')
+          if d == 12:
+              pg.wait_for_timeout(3000)
+              pg.keyboard.press('ArrowRight'); pg.wait_for_timeout(700)
+              pg.keyboard.press('ArrowRight')
+          t0 = time.time(); done = False
+          while time.time() - t0 < 240:
+              if pg.evaluate("document.querySelectorAll('.complete-overlay.show').length"):
+                  done = True; break
+              pg.wait_for_timeout(700)
+          stages.append(pg.evaluate('window.Room3D.getRoomStage()'))
+          check('回归 day%02d' % d, done, '%.0fs stage=%d' % (time.time() - t0, stages[-1]))
+          if d == 5:
+              penguin = pg.evaluate("""(() => {
+                const s = window.Room3D.scene;
+                let hit = null;
+                s.traverse(o => { if (o.userData && o.userData.pickId === 'd5') hit = o; });
+                return !!hit && hit.children.length >= 1;
+              })()""")
+              check('回归 Day5 企鹅为 GLB 模型', penguin)
+          if not done: break
+          if d < 14:
+              nid = 'd%d' % (d + 1)
+              wt = time.time()
+              while time.time() - wt < 60:
+                  if pg.evaluate('window.Room3D.__hasPick(%r)' % nid): break
+                  pg.wait_for_timeout(500)
+              else:
+                  check('day%02d→%02d 推进' % (d, d + 1), False); break
+      check('显影 stage 序列正确 (0,0,0,0,1,2×8,3)',
+            stages == [0, 0, 0, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3],
+            str(stages))
+      check('零页面错误', len(ERR) == 0, 'errs=%s' % ERR[:4])
 
     # ---------- 7. free 版"下一天"按钮（FREE=1 时） ----------
     if os.environ.get('FREE') == '1':

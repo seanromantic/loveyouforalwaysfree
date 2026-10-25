@@ -15,6 +15,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { VignetteShader } from 'three/addons/shaders/VignetteShader.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { loadAll, fitModel } from './models.js';
 
 export const Room3D = (() => {
   const gsap = window.gsap;   // GSAP 以普通 script 引入为全局
@@ -36,6 +37,7 @@ export const Room3D = (() => {
   let persistent = null;              // 房间常驻组（墙/地/桌/灯/浮尘）
   let dayGroup = null;                // 每日物体组（随天替换）
   let doorGroup = null;               // 门口过渡组
+  let tableSlot = null, lampSlot = null;   // GLB 模型挂点（桌/灯）
   let dust = null;                    // 浮尘
   let lampLight = null;               // 桌上主点光源
   let floorMat = null, glowMat = null, southMat = null, baseMat = null;
@@ -181,35 +183,44 @@ export const Room3D = (() => {
     beam.rotation.x = 0.08;
     persistent.add(beam);
 
-    // 桌子：桌面 + 四腿
+    // 桌子：桌面 + 四腿（程序化 fallback；CC0 GLB wood_table_worn 到位后替换）
+    tableSlot = new THREE.Group();
+    tableSlot.position.set(0, 0, -5);
+    tableSlot.name = 'table-slot';
+    persistent.add(tableSlot);
     const deskMat = new THREE.MeshStandardMaterial({ color: 0x2A3042, roughness: 0.7, metalness: 0.1 });
     const top = new THREE.Mesh(new THREE.BoxGeometry(3, 0.25, 1.6), deskMat);
     top.position.set(0, 2.075, -5.0);
-    top.castShadow = true; top.receiveShadow = true;
-    persistent.add(top);
+    top.castShadow = true; top.receiveShadow = true; top.userData._fb = true;
+    tableSlot.add(top);
     const legGeo = new THREE.BoxGeometry(0.16, 1.95, 0.16);
     for (const lx of [-1.4, 1.4]) for (const lz of [-4.25, -5.75]) {
       const leg = new THREE.Mesh(legGeo, deskMat);
       leg.position.set(lx, 0.975, lz);
-      leg.castShadow = true; leg.receiveShadow = true;
-      persistent.add(leg);
+      leg.castShadow = true; leg.receiveShadow = true; leg.userData._fb = true;
+      tableSlot.add(leg);
     }
 
-    // 灯（常驻，Day1 的主角）：灯座 + 灯芯 + 光晕 + 主光源
+    // 灯（常驻，Day1 的主角）：灯座 + 灯芯 + 光晕 + 主光源（GLB desk_lamp_arm_01 替换灯座灯芯）
+    lampSlot = new THREE.Group();
+    lampSlot.position.set(0, 0, -5);
+    lampSlot.name = 'lamp-slot';
+    persistent.add(lampSlot);
     const lampBase = new THREE.Mesh(
       new THREE.CylinderGeometry(0.28, 0.4, 0.28, 8),
       new THREE.MeshStandardMaterial({ color: 0x5A5F70, roughness: 0.5, metalness: 0.35 })
     );
     lampBase.position.set(0, 2.36, -5.0);
-    lampBase.castShadow = true;
-    persistent.add(lampBase);
+    lampBase.castShadow = true; lampBase.userData._fb = true;
+    lampSlot.add(lampBase);
 
     const wick = new THREE.Mesh(
       new THREE.SphereGeometry(0.2, 16, 12),
       new THREE.MeshStandardMaterial({ color: WARM, emissive: WARM, emissiveIntensity: 2.4, roughness: 0.4 })
     );
     wick.position.set(0, 2.74, -5.0);
-    persistent.add(wick);
+    wick.userData._fb = true;
+    lampSlot.add(wick);
     wick.name = 'lamp-wick';
 
     // 灯晕：Sprite 羽化光（无球体轮廓，边缘完全融进空气；配合 Bloom 泛光）
@@ -219,7 +230,7 @@ export const Room3D = (() => {
     }));
     halo.position.set(0, 3.0, -5.0);
     halo.scale.set(3.6, 3.6, 1);
-    persistent.add(halo);
+    lampSlot.add(halo);
     halo.name = 'lamp-halo';
 
     // 主光源（桌上灯，暖，castShadow 1024）
@@ -228,7 +239,7 @@ export const Room3D = (() => {
     lampLight.castShadow = true;
     lampLight.shadow.mapSize.set(1024, 1024);
     lampLight.shadow.bias = -0.005;
-    persistent.add(lampLight);
+    lampSlot.add(lampLight);
 
     // 环境光（暗部不死黑；随显影渐强）
     ambientL = new THREE.AmbientLight(0x404050, 0.7);
@@ -463,6 +474,29 @@ export const Room3D = (() => {
   }
 
   /* ---- 对外 API ---- */
+  /* CC0 GLB 模型应用：桌/灯（加载完成后替换程序化 fallback；阴影已全开） */
+  function applyRoomModels() {
+    const M = window.__glbModels || {};
+    if (tableSlot && M.table && !tableSlot.getObjectByName('glb-table')) {
+      tableSlot.children.filter(c => c.userData._fb).forEach(c => c.visible = false);
+      const m = M.table.scene.clone();
+      const s = fitModel(m, 3.2, null, 1.7);
+      m.position.y = 2.2 - M.table.size.y * s;   // 桌面顶对齐 2.2
+      m.name = 'glb-table';
+      tableSlot.add(m);
+    }
+    if (lampSlot && M.lamp && !lampSlot.getObjectByName('glb-lamp')) {
+      lampSlot.children.filter(c => c.userData._fb).forEach(c => c.visible = false);
+      const m = M.lamp.scene.clone();
+      const s = fitModel(m, null, 1.15, null);
+      m.position.y = 2.3;                        // 桌面之上
+      m.name = 'glb-lamp';
+      lampSlot.add(m);
+      // 光从灯罩下方打出（灯罩约在灯体上部 55% 处）
+      if (lampLight) lampLight.position.y = 2.3 + M.lamp.size.y * s * 0.55;
+    }
+  }
+
   return {
     /* 一次性挂载（renderer 常驻；engine 保留 #stage3d 容器） */
     boot(el) {
@@ -491,6 +525,7 @@ export const Room3D = (() => {
       dayGroup  = new THREE.Group(); scene.add(dayGroup);
       doorGroup = new THREE.Group(); doorGroup.visible = false; scene.add(doorGroup);
       buildRoom();
+      loadAll(() => applyRoomModels());   // CC0 GLB 预加载：到位即替换桌/灯（门/企鹅在各自场景挂载时应用）
 
       composer = new EffectComposer(renderer);
       composer.addPass(new RenderPass(scene, camera));
@@ -621,8 +656,15 @@ export const Room3D = (() => {
         color: open ? 0x111827 : 0x0E1220, emissive: open ? 0x2A1F10 : 0x000000,
         emissiveIntensity: glowI * 0.6, roughness: 0.5, side: THREE.DoubleSide
       });
-      const door = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 6.2), doorMat);
-      door.position.set(0, 3.1, -5.85);
+      // 门板：优先 CC0 GLB（rough_pine_door），未就绪时程序化贴片
+      const door = (window.__glbModels && window.__glbModels.door) ? (() => {
+        const m = window.__glbModels.door.scene.clone();
+        fitModel(m, 2.5, 6.1, null);
+        m.position.set(0, 0, -5.85);
+        m.name = 'glb-door';
+        return m;
+      })() : new THREE.Mesh(new THREE.PlaneGeometry(2.6, 6.2), doorMat);
+      if (!(door.isMesh && !door.geometry)) door.position.set(0, 3.1, -5.85);
       doorGroup.add(door);
 
       // 门框（贴合南墙门洞）
@@ -672,6 +714,7 @@ export const Room3D = (() => {
     get camera() { return camera; },
     get lampLight() { return lampLight; },
     get gsap() { return gsap; },
+    __applyRoomModels: applyRoomModels,
   };
 })();
 
