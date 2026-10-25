@@ -56,6 +56,14 @@ function showLine(text, mesh, align) {
     p.style.margin = '0 0 ' + (i < (Array.isArray(text) ? text : [text]).length - 1 ? '0.7em' : '0');
     el.appendChild(p);
   });
+  // 极淡小字指引：Day N
+  const d = window.__currentDay || 0;
+  if (d) {
+    const tag = document.createElement('div');
+    tag.className = 'scene-text-day';
+    tag.textContent = 'Day ' + d;
+    el.appendChild(tag);
+  }
   el.style.display = 'block';
   el.style.opacity = '0';
   const cw = Room3D.containerWidth(), ch = Room3D.containerHeight();

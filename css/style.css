@@ -542,24 +542,25 @@ body::after {
 }
 #stage3d canvas { display: block; width: 100%; height: 100%; }
 
-/* 场景文字：毛玻璃暖色框（用户 CSS 硬规格：16px / 1.9 / 0.05em / #F2B45C） */
+/* 场景文字：极简无边框（宋体 / 暖黄 #F2B45C / 下方极淡 Day 指引） */
 #stage3d ~ .scene-text,
 .scene-text {
   max-width: min(78vw, 420px);
   text-align: left;
   margin: 0;
-  padding: 14px 20px;
+  padding: 12px 4px;
   font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
   font-size: 16px;
   line-height: 1.9;
   letter-spacing: 0.05em;
   color: #F2B45C;
-  background: rgba(8, 10, 16, 0.7);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(242, 180, 92, 0.16);
-  border-radius: 12px;
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.45);
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  text-shadow: 0 0 22px rgba(242, 180, 92, 0.18), 0 0 8px rgba(242, 180, 92, 0.12);
 }
 .scene-text p { margin: 0; }
 .scene-text p + p { margin-top: 6px; }
@@ -570,6 +571,15 @@ body::after {
   font-size: 12px;
   letter-spacing: 0.12em;
   color: rgba(242, 180, 92, 0.62);
+}
+/* 极淡小字指引：Day N */
+.scene-text .scene-text-day {
+  margin-top: 12px;
+  font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: rgba(242, 180, 92, 0.4);
+  text-shadow: none;
 }
 
 /* 门口文字（毛玻璃化） */

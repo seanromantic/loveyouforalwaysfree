@@ -207,6 +207,7 @@ window.App = (function () {
     clearApp();
     Room3D.hideDoor();
     Room3D.setRoomStage(stageForDay(day));   // 空间显影：随天数墙/光慢慢长出来
+    window.__currentDay = day;               // 供文字框显示 Day N
     sceneEl = document.getElementById('stage3d');
     window.__sceneEl = sceneEl;
     window.__sceneText = null;

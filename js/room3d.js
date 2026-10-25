@@ -39,6 +39,7 @@ export const Room3D = (() => {
   let dust = null;                    // 浮尘
   let lampLight = null;               // 桌上主点光源
   let floorMat = null, glowMat = null, southMat = null, baseMat = null;
+  let doorFrameMat = null, doorSeamMat = null, lampPatchMat = null, doorAlphaTex = null;
   let ambientL = null, hemiL = null, keyL = null, moonL = null, beamMat = null;
   let roomStage = 0;                  // 空间显影阶段 0-3（0=虚无孤灯 1=窗开墙现 2=房间丰满 3=全亮）
   let rafId = 0, running = false;
@@ -95,34 +96,72 @@ export const Room3D = (() => {
     const glowAlpha = makeGlowAlpha(512, 300, 170, 470);   // 亮心偏向桌下（纹理 y=300 ≈ 世界 z=-5）
     floorMat = new THREE.MeshStandardMaterial({
       color: FLOOR, roughness: 0.8, metalness: 0.2, map: floorTex,
-      alphaMap: glowAlpha, transparent: true, opacity: 0.001
+      alphaMap: glowAlpha, transparent: true, opacity: 0.3   // stage0 起即"极暗实体地板"（不悬浮）
     });
     const floor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.5, 12), floorMat);
     floor.position.y = -0.25;
     floor.receiveShadow = true;
+    floor.name = 'floor-base';
     persistent.add(floor);
 
-    // 灯下亮区地板（Day1 就存在的一小片被照亮的圆形地板，边缘融进黑暗）
-    const smallGlow = makeGlowAlpha(512, 512, 120, 300);
+    // 灯下亮区地板（被灯照亮的一小片，边缘融进黑暗；暖深色接收光影）
+    const smallGlow = makeGlowAlpha(512, 512, 120, 320);
     glowMat = new THREE.MeshStandardMaterial({
-      color: FLOOR, roughness: 0.85, metalness: 0.15,
-      alphaMap: smallGlow, transparent: true, opacity: 0.9
+      color: 0x2B2113, roughness: 0.85, metalness: 0.15,
+      alphaMap: smallGlow, transparent: true, opacity: 0.85
     });
-    const glowFloor = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 4.4), glowMat);
+    const glowFloor = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), glowMat);
     glowFloor.rotation.x = -Math.PI / 2;
     glowFloor.position.set(0, 0.02, -4.7);
     glowFloor.receiveShadow = true;
+    glowFloor.name = 'glow-floor';
     persistent.add(glowFloor);
 
-    // 南墙（有厚度；Day5 起显影，之前完全不可见 → 前四天没有墙）
+    // 灯下暖色光斑（Additive 羽化：光真正"打在"地面上，柔和无边缘）
+    lampPatchMat = new THREE.MeshBasicMaterial({
+      map: makeGlowAlpha(512, 512, 60, 260), color: WARM,
+      transparent: true, opacity: 0.22, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const lampPatch = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 5.5), lampPatchMat);
+    lampPatch.rotation.x = -Math.PI / 2;
+    lampPatch.position.set(0, 0.03, -4.7);
+    lampPatch.name = 'lamp-patch';
+    persistent.add(lampPatch);
+    lampPatch.name = 'lamp-patch';
+
+    // 南墙（有厚度；门洞挖空 + 门框 + 门缝微光 → 门嵌在墙里；墙随显影渐亮）
+    doorAlphaTex = makeDoorAlpha();
     southMat = new THREE.MeshStandardMaterial({
       color: WALL, roughness: 0.92, metalness: 0.08,
-      transparent: true, opacity: 0.001
+      alphaMap: doorAlphaTex, transparent: true, opacity: 0.1
     });
     const south = new THREE.Mesh(new THREE.BoxGeometry(12, 8, 0.5), southMat);
     south.position.set(0, 4, -6.25);
     south.receiveShadow = true;
+    south.name = 'south-wall';
     persistent.add(south);
+
+    // 门框（四条细边，暗色；边缘阴影让人知道这里有建筑结构）
+    doorFrameMat = new THREE.MeshStandardMaterial({
+      color: 0x0E1219, roughness: 0.95, metalness: 0, transparent: true, opacity: 0.5
+    });
+    const fw = 0.16;
+    const fSideL = new THREE.Mesh(new THREE.BoxGeometry(fw, 6.2, 0.14), doorFrameMat); fSideL.position.set(-1.45, 3.1, -6.35);
+    const fSideR = new THREE.Mesh(new THREE.BoxGeometry(fw, 6.2, 0.14), doorFrameMat); fSideR.position.set(1.45, 3.1, -6.35);
+    const fTop = new THREE.Mesh(new THREE.BoxGeometry(3.06, fw, 0.14), doorFrameMat); fTop.position.set(0, 6.2, -6.35);
+    const fBot = new THREE.Mesh(new THREE.BoxGeometry(3.06, fw, 0.14), doorFrameMat); fBot.position.set(0, 0, -6.35);
+    fSideL.castShadow = fSideR.castShadow = fTop.castShadow = fBot.castShadow = true;
+    fSideL.name = fSideR.name = fTop.name = fBot.name = 'door-frame';
+    persistent.add(fSideL, fSideR, fTop, fBot);
+
+    // 门缝微光（门洞正中一条极细暖光竖线：门缝透出极其微弱的光）
+    doorSeamMat = new THREE.MeshBasicMaterial({
+      color: WARM, transparent: true, opacity: 0.16, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 5.8), doorSeamMat);
+    seam.position.set(0, 3.1, -6.2);
+    persistent.add(seam);
+    seam.name = 'door-seam';
 
     // 墙根阴影（南墙根，随墙显影；软暗带，非硬切线）
     baseMat = new THREE.MeshStandardMaterial({
@@ -166,18 +205,20 @@ export const Room3D = (() => {
     persistent.add(lampBase);
 
     const wick = new THREE.Mesh(
-      new THREE.SphereGeometry(0.26, 16, 12),
-      new THREE.MeshStandardMaterial({ color: WARM, emissive: WARM, emissiveIntensity: 2.2, roughness: 0.4 })
+      new THREE.SphereGeometry(0.2, 16, 12),
+      new THREE.MeshStandardMaterial({ color: WARM, emissive: WARM, emissiveIntensity: 2.4, roughness: 0.4 })
     );
     wick.position.set(0, 2.74, -5.0);
     persistent.add(wick);
     wick.name = 'lamp-wick';
 
-    const halo = new THREE.Mesh(
-      new THREE.SphereGeometry(0.85, 20, 14),
-      new THREE.MeshBasicMaterial({ color: WARM, transparent: true, opacity: 0.15, depthWrite: false })
-    );
-    halo.position.copy(wick.position);
+    // 灯晕：Sprite 羽化光（无球体轮廓，边缘完全融进空气；配合 Bloom 泛光）
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: makeRadialSprite(), color: WARM, transparent: true, opacity: 0.62,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    }));
+    halo.position.set(0, 3.0, -5.0);
+    halo.scale.set(3.6, 3.6, 1);
     persistent.add(halo);
     halo.name = 'lamp-halo';
 
@@ -231,6 +272,47 @@ export const Room3D = (() => {
     grad.addColorStop(1, 'rgba(255,255,255,0.02)');
     g.fillStyle = grad;
     g.fillRect(0, 0, 1024, 1024);
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    return tex;
+  }
+
+  /* 南墙门洞 alpha：白=墙，黑=门洞（挖空，让"门"嵌在墙里） */
+  function makeDoorAlpha() {
+    const c = document.createElement('canvas');
+    c.width = 1024; c.height = 1024;
+    const g = c.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, 1024, 1024);
+    // 门洞世界范围：x ∈ [-1.3, 1.3]，y ∈ [0, 6.2]（墙中心 (0,4)，宽 12 高 8）
+    const px0 = (6 - 1.3) / 12 * 1024, px1 = (6 + 1.3) / 12 * 1024;
+    const py0 = (8 - 6.2) / 8 * 1024, py1 = (8 - 0) / 8 * 1024;
+    // 挖空 + 边缘 12px 半透羽化（若隐若现）
+    g.clearRect(px0, py0, px1 - px0, py1 - py0);
+    g.fillStyle = 'rgba(255,255,255,0.28)';
+    g.fillRect(px0, py0, px1 - px0, 12);
+    g.fillRect(px0, py1 - 12, px1 - px0, 12);
+    g.fillRect(px0, py0, 12, py1 - py0);
+    g.fillRect(px1 - 12, py0, 12, py1 - py0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    doorAlphaTex = tex;
+    return tex;
+  }
+
+  /* 灯晕羽化贴图（Sprite 用：中心亮 → 边缘全透明，绝无球体轮廓） */
+  function makeRadialSprite() {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(128, 128, 2, 128, 128, 127);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.2, 'rgba(255,255,255,0.72)');
+    grad.addColorStop(0.45, 'rgba(255,255,255,0.28)');
+    grad.addColorStop(0.72, 'rgba(255,255,255,0.07)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 256);
     const tex = new THREE.CanvasTexture(c);
     tex.anisotropy = 4;
     return tex;
@@ -443,14 +525,16 @@ export const Room3D = (() => {
     setRoomStage(stage) {
       if (roomStage === stage || !scene) return;
       roomStage = stage;
-      const t = { wall: 0, floor: 0.001, glow: 0.9, base: 0, beam: 0,
+      const t = { wall: 0.1, floor: 0.3, glow: 0.85, base: 0.35, beam: 0,
+                  seam: 0.16, frame: 0.5, patch: 0.22,
                   amb: 0.7, hemi: 0.3, key: 0.4, moon: 0,
                   fogN: 3, fogF: 16 };
-      if (stage === 1) Object.assign(t, { wall: 0.6, floor: 0.5, base: 0.45, beam: 0.22, amb: 1.0, hemi: 0.7, key: 0.9, moon: 0.7, fogN: 9, fogF: 30 });
-      else if (stage === 2) Object.assign(t, { wall: 0.85, floor: 0.8, base: 0.55, beam: 0.28, amb: 1.25, hemi: 0.95, key: 1.3, moon: 0.95, fogN: 14, fogF: 44 });
-      else if (stage === 3) Object.assign(t, { wall: 1, floor: 1, base: 0.6, beam: 0.32, amb: 1.5, hemi: 1.15, key: 1.6, moon: 1.1, fogN: 20, fogF: 60 });
+      if (stage === 1) Object.assign(t, { wall: 0.6, floor: 0.55, base: 0.45, beam: 0.22, seam: 0.3, frame: 0.45, patch: 0.26, amb: 1.0, hemi: 0.7, key: 0.9, moon: 0.7, fogN: 9, fogF: 30 });
+      else if (stage === 2) Object.assign(t, { wall: 0.85, floor: 0.8, base: 0.55, beam: 0.28, seam: 0.32, frame: 0.4, patch: 0.28, amb: 1.25, hemi: 0.95, key: 1.3, moon: 0.95, fogN: 14, fogF: 44 });
+      else if (stage === 3) Object.assign(t, { wall: 1, floor: 1, base: 0.6, beam: 0.32, seam: 0.35, frame: 0.35, patch: 0.3, amb: 1.5, hemi: 1.15, key: 1.6, moon: 1.1, fogN: 20, fogF: 60 });
       gsap.killTweensOf(floorMat); gsap.killTweensOf(southMat); gsap.killTweensOf(glowMat);
       gsap.killTweensOf(baseMat); gsap.killTweensOf(beamMat);
+      gsap.killTweensOf(doorSeamMat); gsap.killTweensOf(doorFrameMat); gsap.killTweensOf(lampPatchMat);
       gsap.killTweensOf(ambientL); gsap.killTweensOf(hemiL); gsap.killTweensOf(keyL); gsap.killTweensOf(moonL);
       const dur = stage > roomStage ? 2.2 : 1.2;
       if (floorMat) gsap.to(floorMat, { opacity: t.floor, duration: dur, ease: 'power2.out' });
@@ -458,6 +542,9 @@ export const Room3D = (() => {
       if (glowMat) gsap.to(glowMat, { opacity: t.glow, duration: 1.5, ease: 'power2.out' });
       if (baseMat) gsap.to(baseMat, { opacity: t.base, duration: dur, ease: 'power2.out' });
       if (beamMat) gsap.to(beamMat, { opacity: t.beam, duration: dur, ease: 'power2.out' });
+      if (doorSeamMat) gsap.to(doorSeamMat, { opacity: t.seam, duration: dur, ease: 'power2.out' });
+      if (doorFrameMat) gsap.to(doorFrameMat, { opacity: t.frame, duration: dur, ease: 'power2.out' });
+      if (lampPatchMat) gsap.to(lampPatchMat, { opacity: t.patch, duration: dur, ease: 'power2.out' });
       if (ambientL) gsap.to(ambientL, { intensity: t.amb, duration: dur, ease: 'power2.out' });
       if (hemiL) gsap.to(hemiL, { intensity: t.hemi, duration: dur, ease: 'power2.out' });
       if (keyL) gsap.to(keyL, { intensity: t.key, duration: dur, ease: 'power2.out' });
@@ -535,20 +622,20 @@ export const Room3D = (() => {
         emissiveIntensity: glowI * 0.6, roughness: 0.5, side: THREE.DoubleSide
       });
       const door = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 6.2), doorMat);
-      door.position.set(0, 3.1, -5.6);
+      door.position.set(0, 3.1, -5.85);
       doorGroup.add(door);
 
-      // 门框
+      // 门框（贴合南墙门洞）
       const frameMat = new THREE.MeshStandardMaterial({ color: 0x1A1E2A, roughness: 0.92 });
-      const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 6.2, 0.18), frameMat); f1.position.set(-1.42, 3.1, -5.55);
-      const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 6.2, 0.18), frameMat); f2.position.set(1.42, 3.1, -5.55);
-      const f3 = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.18, 0.18), frameMat); f3.position.set(0, 6.35, -5.55);
+      const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 6.2, 0.18), frameMat); f1.position.set(-1.45, 3.1, -5.8);
+      const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.18, 6.2, 0.18), frameMat); f2.position.set(1.45, 3.1, -5.8);
+      const f3 = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.18, 0.18), frameMat); f3.position.set(0, 6.3, -5.8);
       doorGroup.add(f1, f2, f3);
 
       // 门缝竖光
       const seam = new THREE.Mesh(new THREE.PlaneGeometry(0.09, 6.0),
         new THREE.MeshBasicMaterial({ color: 0xFFD9A0, transparent: true, opacity: glowI * 0.85, depthWrite: false }));
-      seam.position.set(0, 3.1, -5.45);
+      seam.position.set(0, 3.1, -5.72);
       doorGroup.add(seam);
 
       // 地面光斑（门缝透出的光，呼吸）
